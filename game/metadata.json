@@ -1,0 +1,6 @@
+{
+  "name": "Deathmatch 3D",
+  "description": "Multiplayer 3D arena first-person shooter with Mezzanine upper deck, TCP server multiplayer, and bot match.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
