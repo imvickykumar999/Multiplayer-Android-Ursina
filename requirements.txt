@@ -1,4 +1,6 @@
-﻿ursina
+ursina
 psutil
 pygame
 Pillow
+art
+colorama
