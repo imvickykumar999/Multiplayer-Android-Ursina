@@ -1,6 +1,9 @@
 import 'dart:math';
+
 import 'package:vector_math/vector_math_64.dart';
+
 import 'enemy.dart';
+import 'player.dart';
 
 class Bullet {
   Vector3 position;
@@ -18,8 +21,8 @@ class Bullet {
     required this.xDirection,
     required this.damage,
     this.slave = false,
-  })  : velocity = Vector3.zero(),
-        position = startPos.clone() {
+  }) : velocity = Vector3.zero(),
+       position = startPos.clone() {
     const double speed = 40.0;
     final dirRad = direction * pi / 180.0;
     final xDirRad = xDirection * pi / 180.0;
@@ -32,7 +35,13 @@ class Bullet {
     position += norm * 0.8;
   }
 
-  bool update(double dt, List<Enemy> enemies, Function(Enemy enemy, int damage) onHitEnemy) {
+  bool update(
+    double dt,
+    List<Enemy> enemies,
+    Function(Enemy enemy, int damage) onHitEnemy, {
+    Player? player,
+    Function(Player player, int damage)? onHitPlayer,
+  }) {
     if (isDestroyed) return false;
 
     lifetime -= dt;
@@ -43,7 +52,19 @@ class Bullet {
 
     position += velocity * dt;
 
-    // Check hit against remote enemies if this is our local bullet
+    if (slave && player != null && onHitPlayer != null && player.health > 0) {
+      final dx = (position.x - player.position.x).abs();
+      final dz = (position.z - player.position.z).abs();
+      final dy = position.y - player.position.y;
+
+      if (dx < 0.9 && dz < 0.9 && dy >= -0.2 && dy <= 2.2) {
+        isDestroyed = true;
+        onHitPlayer(player, damage);
+        return false;
+      }
+    }
+
+    // Check hit against remote enemies if this is our local bullet.
     if (!slave) {
       for (final enemy in enemies) {
         if (!enemy.isDead && enemy.health > 0) {

@@ -1,7 +1,9 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
+
 import '../models/player.dart';
 import '../models/enemy.dart';
 import '../models/bullet.dart';
@@ -16,17 +18,14 @@ class GameScreen extends StatefulWidget {
   final NetworkService network;
   final Player player;
 
-  const GameScreen({
-    super.key,
-    required this.network,
-    required this.player,
-  });
+  const GameScreen({super.key, required this.network, required this.player});
 
   @override
   State<GameScreen> createState() => _GameScreenState();
 }
 
-class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateMixin {
+class _GameScreenState extends State<GameScreen>
+    with SingleTickerProviderStateMixin {
   late Ticker _ticker;
   Duration _lastDuration = Duration.zero;
 
@@ -210,15 +209,30 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
 
     // 2. Update Bullets & Hit Detection
     _bullets.removeWhere((bullet) {
-      return !bullet.update(dt, _enemies, (hitEnemy, dmg) {
-        setState(() {
-          hitEnemy.health = max(0, hitEnemy.health - dmg);
-          if (hitEnemy.health <= 0) {
-            hitEnemy.isDead = true;
-          }
-        });
-        widget.network.sendHealth(hitEnemy.id, hitEnemy.health);
-      });
+      return !bullet.update(
+        dt,
+        _enemies,
+        (hitEnemy, dmg) {
+          setState(() {
+            hitEnemy.health = max(0, hitEnemy.health - dmg);
+            if (hitEnemy.health <= 0) {
+              hitEnemy.isDead = true;
+            }
+          });
+          widget.network.sendHealth(hitEnemy.id, hitEnemy.health);
+        },
+        player: widget.player,
+        onHitPlayer: (hitPlayer, dmg) {
+          final updatedHealth = max(0, hitPlayer.health - dmg);
+          setState(() {
+            hitPlayer.health = updatedHealth;
+            if (updatedHealth <= 0) {
+              hitPlayer.death();
+            }
+          });
+          widget.network.sendHealth(hitPlayer.id, updatedHealth);
+        },
+      );
     });
 
     // 3. Update Muzzle Flash
@@ -259,7 +273,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
     player.ammo--;
     _muzzleFlashTimer = 0.08;
 
-    final eyePos = vm.Vector3(player.position.x, player.position.y + 1.4, player.position.z);
+    final eyePos = vm.Vector3(
+      player.position.x,
+      player.position.y + 1.4,
+      player.position.z,
+    );
     final rnd = Random();
     final damage = rnd.nextInt(15) + 10; // 10 to 25
 
@@ -283,7 +301,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
   void _respawn() {
     widget.player.respawn();
     widget.network.sendRespawn(widget.player.position, widget.player.health);
-    widget.network.sendPlayer(widget.player.position, widget.player.yaw, widget.player.health);
+    widget.network.sendPlayer(
+      widget.player.position,
+      widget.player.yaw,
+      widget.player.health,
+    );
     setState(() {});
   }
 
@@ -321,7 +343,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                 if (isDead) return;
                 setState(() {
                   player.yaw += details.delta.dx * 0.25;
-                  player.pitch = (player.pitch - details.delta.dy * 0.25).clamp(-80.0, 80.0);
+                  player.pitch = (player.pitch - details.delta.dy * 0.25).clamp(
+                    -80.0,
+                    80.0,
+                  );
                 });
               },
             ),
@@ -333,7 +358,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
             top: 16,
             child: SafeArea(
               child: IconButton(
-                icon: const Icon(Icons.arrow_back, color: Colors.white, size: 28),
+                icon: const Icon(
+                  Icons.arrow_back,
+                  color: Colors.white,
+                  size: 28,
+                ),
                 onPressed: () {
                   widget.network.close();
                   Navigator.pushReplacement(
@@ -363,7 +392,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                         borderRadius: BorderRadius.circular(4),
                         border: Border.all(color: Colors.white, width: 1.5),
                         boxShadow: [
-                          BoxShadow(color: Colors.black.withAlpha(120), blurRadius: 6),
+                          BoxShadow(
+                            color: Colors.black.withAlpha(120),
+                            blurRadius: 6,
+                          ),
                         ],
                       ),
                       child: ClipRRect(
@@ -410,7 +442,9 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                             color: Colors.yellowAccent,
                             fontWeight: FontWeight.bold,
                             fontSize: 14,
-                            shadows: [Shadow(color: Colors.black, blurRadius: 4)],
+                            shadows: [
+                              Shadow(color: Colors.black, blurRadius: 4),
+                            ],
                           ),
                         ),
                       ),
@@ -458,10 +492,17 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.white, width: 2),
                           boxShadow: [
-                            BoxShadow(color: Colors.black.withAlpha(120), blurRadius: 6),
+                            BoxShadow(
+                              color: Colors.black.withAlpha(120),
+                              blurRadius: 6,
+                            ),
                           ],
                         ),
-                        child: const Icon(Icons.refresh, color: Colors.white, size: 28),
+                        child: const Icon(
+                          Icons.refresh,
+                          color: Colors.white,
+                          size: 28,
+                        ),
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -481,10 +522,17 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                               shape: BoxShape.circle,
                               border: Border.all(color: Colors.white, width: 2),
                               boxShadow: [
-                                BoxShadow(color: Colors.black.withAlpha(120), blurRadius: 6),
+                                BoxShadow(
+                                  color: Colors.black.withAlpha(120),
+                                  blurRadius: 6,
+                                ),
                               ],
                             ),
-                            child: const Icon(Icons.arrow_upward, color: Colors.white, size: 32),
+                            child: const Icon(
+                              Icons.arrow_upward,
+                              color: Colors.white,
+                              size: 32,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 18),
@@ -509,7 +557,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                                 ),
                               ],
                             ),
-                            child: const Icon(Icons.gps_fixed, color: Colors.white, size: 40),
+                            child: const Icon(
+                              Icons.gps_fixed,
+                              color: Colors.white,
+                              size: 40,
+                            ),
                           ),
                         ),
                       ],
@@ -544,7 +596,11 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                             fontWeight: FontWeight.w900,
                             letterSpacing: 3.0,
                             shadows: [
-                              Shadow(color: Colors.black, blurRadius: 10, offset: Offset(2, 2)),
+                              Shadow(
+                                color: Colors.black,
+                                blurRadius: 10,
+                                offset: Offset(2, 2),
+                              ),
                             ],
                           ),
                         ),
@@ -571,7 +627,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.blueAccent[700],
                             foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 16),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 48,
+                              vertical: 16,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
                             ),
@@ -579,7 +638,10 @@ class _GameScreenState extends State<GameScreen> with SingleTickerProviderStateM
                           ),
                           child: const Text(
                             'RESPAWN',
-                            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
                         ),
                       ],
