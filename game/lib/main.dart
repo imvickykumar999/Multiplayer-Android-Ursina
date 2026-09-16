@@ -22,7 +22,7 @@ class UrsinaMultiplayerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Ursina FPS',
+      title: 'Deathmatch 3D',
       debugShowCheckedModeBanner: false,
       theme: ThemeData.dark().copyWith(
         scaffoldBackgroundColor: const Color(0xFF010D25),

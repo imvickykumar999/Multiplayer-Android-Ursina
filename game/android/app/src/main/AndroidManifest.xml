@@ -3,9 +3,9 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
 
     <application
-        android:label="Ursina FPS"
+        android:label="Deathmatch 3D"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@drawable/deathmatch_logo">
         <activity
             android:name=".MainActivity"
             android:exported="true"
