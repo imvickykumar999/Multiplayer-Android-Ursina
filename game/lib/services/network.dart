@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:vector_math/vector_math_64.dart';
 
@@ -46,7 +47,10 @@ class NetworkService {
       isConnected = true;
 
       // Start periodic sender queue
-      _sendTimer = Timer.periodic(const Duration(milliseconds: 33), (_) => _flushOutgoingQueue());
+      _sendTimer = Timer.periodic(
+        const Duration(milliseconds: 33),
+        (_) => _flushOutgoingQueue(),
+      );
 
       _subscription = _socket!.listen(
         _onData,
@@ -182,7 +186,12 @@ class NetworkService {
     _queueSend(payload);
   }
 
-  void sendBullet(Vector3 pos, int damage, double direction, double xDirection) {
+  void sendBullet(
+    Vector3 pos,
+    int damage,
+    double direction,
+    double xDirection,
+  ) {
     if (!isConnected) return;
     final payload = {
       "object": "bullet",
@@ -201,7 +210,7 @@ class NetworkService {
       "id": targetId,
       "health": health,
     };
-    _queueSend(payload);
+    _queueSend(payload, priority: true);
   }
 
   void sendRespawn(Vector3 pos, int health) {
@@ -215,10 +224,14 @@ class NetworkService {
     _queueSend(payload);
   }
 
-  void _queueSend(Map<String, dynamic> data) {
+  void _queueSend(Map<String, dynamic> data, {bool priority = false}) {
     try {
       final jsonStr = '${jsonEncode(data)}\n';
-      _outgoingQueue.add(jsonStr);
+      if (priority) {
+        _outgoingQueue.insert(0, jsonStr);
+      } else {
+        _outgoingQueue.add(jsonStr);
+      }
     } catch (e) {
       debugPrint('[Network] Error encoding packet: $e');
     }
@@ -227,9 +240,11 @@ class NetworkService {
   void _flushOutgoingQueue() {
     if (!isConnected || _socket == null || _outgoingQueue.isEmpty) return;
     try {
-      final batch = _outgoingQueue.join();
-      _outgoingQueue.clear();
-      _socket!.add(utf8.encode(batch));
+      // The current server reads one JSON object per socket read. Sending one
+      // queued packet at a time prevents a health update being hidden behind
+      // a coalesced movement or bullet packet.
+      final packet = _outgoingQueue.removeAt(0);
+      _socket!.add(utf8.encode(packet));
     } catch (e) {
       debugPrint('[Network] Socket write error: $e');
       close();

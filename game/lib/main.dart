@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+
 import 'ui/lobby_screen.dart';
 
 void main() {
@@ -10,7 +11,6 @@ void main() {
   SystemChrome.setPreferredOrientations([
     DeviceOrientation.landscapeLeft,
     DeviceOrientation.landscapeRight,
-    DeviceOrientation.portraitUp,
   ]);
 
   runApp(const UrsinaMultiplayerApp());
