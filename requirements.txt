@@ -1,6 +1,8 @@
 ursina
+scapy
 psutil
 pygame
-Pillow
 art
+google-api-python-client
+pynput
 colorama

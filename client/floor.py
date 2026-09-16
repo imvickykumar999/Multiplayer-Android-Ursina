@@ -205,6 +205,6 @@ class Floor:
 
         # 1st Floor Tactical Cover Barricades
         self.cover_barricades = [
-            ursina.Entity(model="cube", position=ursina.Vec3(0, 6.75, 15), scale=ursina.Vec3(4, 1.5, 1.0), texture="assets/wall.png", collider="box"),
-            ursina.Entity(model="cube", position=ursina.Vec3(0, 6.75, -15), scale=ursina.Vec3(4, 1.5, 1.0), texture="assets/wall.png", collider="box"),
+            ursina.Entity(model="cube", position=ursina.Vec3(0, 7.5, 15), scale=ursina.Vec3(4, 3.0, 1.0), texture="assets/wall.png", collider="box"),
+            ursina.Entity(model="cube", position=ursina.Vec3(0, 7.5, -15), scale=ursina.Vec3(4, 3.0, 1.0), texture="assets/wall.png", collider="box"),
         ]

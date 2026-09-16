@@ -1,5 +1,63 @@
 # -*- mode: python ; coding: utf-8 -*-
 
+excludes = [
+    # Heavy game engines & GUI frameworks not used by dedicated server
+    'ursina',
+    'panda3d',
+    'direct',
+    'pygame',
+    'PIL',
+    'Pillow',
+    'tkinter',
+    'tkinterweb',
+
+    # Data science, ML & scraping tools
+    'scipy',
+    'pandas',
+    'numpy',
+    'matplotlib',
+    'torch',
+    'transformers',
+    'cv2',
+    'IPython',
+    'jupyter',
+    'playwright',
+    'selenium',
+
+    # Security/heuristic triggering libraries
+    'cryptography',
+    'scapy',
+    'pynput',
+
+    # Cloud & network utilities
+    'google',
+    'googleapiclient',
+    'googleapis_common_protos',
+    'proto',
+    'protobuf',
+    'opentelemetry',
+    'requests',
+    'urllib3',
+    'certifi',
+    'cffi',
+    'pycparser',
+    'pip',
+
+    # Unused stdlib modules
+    'sqlite3',
+    'unittest',
+    'test',
+    'pydoc',
+    'doctest',
+    'difflib',
+    'pdb',
+    'profile',
+    'pstats',
+    'curses',
+    'pty',
+    'smtplib',
+    'xmlrpc',
+]
 
 a = Analysis(
     ['main.py'],
@@ -12,9 +70,9 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=excludes,
     noarchive=False,
-    optimize=0,
+    optimize=1,
 )
 pyz = PYZ(a.pure)
 
@@ -29,7 +87,6 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=False,
-    upx_exclude=[],
     runtime_tmpdir=None,
     console=True,
     disable_windowed_traceback=False,
@@ -38,4 +95,5 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['server.ico'],
+    version='version_info.txt',
 )

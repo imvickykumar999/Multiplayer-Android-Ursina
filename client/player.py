@@ -66,8 +66,44 @@ class Player(FirstPersonController):
             color=ursina.color.white
         )
 
+        self.magazine_size = 15
+        self.ammo = self.magazine_size
+        self.is_reloading = False
+        self.reload_time = 2.0
+        self.reload_timer = 0.0
+        self.ammo_text = ursina.Text(
+            parent=ursina.camera.ui,
+            text=f"{self.ammo} / {self.magazine_size}",
+            position=ursina.Vec2(0, 0.36),
+            origin=ursina.Vec2(0, 0),
+            scale=1.0,
+            color=ursina.color.white
+        )
+        self.reload_text = ursina.Text(
+            parent=ursina.camera.ui,
+            text="Reloading...",
+            position=ursina.Vec2(0, 0.31),
+            origin=ursina.Vec2(0, 0),
+            scale=0.9,
+            color=ursina.color.yellow,
+            enabled=False
+        )
+
         self.network = network
-        self.gun_sound = ursina.Audio('assets/bullet.mp3', autoplay=False)
+        self.gun_sound = None
+        try:
+            import pygame
+            if not pygame.mixer.get_init():
+                pygame.mixer.init()
+            import os, sys
+            base_dir = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+            sound_path = os.path.join(base_dir, 'assets', 'bullet.mp3')
+            if not os.path.exists(sound_path):
+                sound_path = 'assets/bullet.mp3'
+            self.gun_sound = pygame.mixer.Sound(sound_path)
+            self.gun_sound.set_volume(1.0)
+        except Exception as e:
+            print(f"[WARNING] Gun sound initialization failed: {e}")
         self.death_message_shown = False
 
         self.spawn_points = [
@@ -215,12 +251,44 @@ class Player(FirstPersonController):
         ursina.mouse.locked = True
         ursina.mouse.visible = False
 
+        self.ammo = self.magazine_size
+        self.is_reloading = False
+        self.reload_timer = 0.0
+        self.gun.rotation_z = -5
+        if hasattr(self, 'reload_text') and self.reload_text:
+            self.reload_text.enabled = False
+        if hasattr(self, 'ammo_text') and self.ammo_text:
+            self.ammo_text.text = f"{self.ammo} / {self.magazine_size}"
+
         if self.network:
             if hasattr(self.network, 'send_respawn'):
                 self.network.send_respawn(self.world_position, self.health)
             self.network.send_player(self)
 
+    def reload(self):
+        if self.health <= 0 or self.is_reloading or self.ammo >= self.magazine_size:
+            return
+        self.is_reloading = True
+        self.reload_timer = self.reload_time
+        self.reload_text.enabled = True
+        self.reload_text.text = f"Reloading... {self.reload_time:.1f}s"
+
     def update(self):
+        if self.ammo <= 0 and not self.is_reloading and self.health > 0:
+            self.reload()
+
+        if self.is_reloading:
+            self.reload_timer -= ursina.time.dt
+            self.reload_text.enabled = True
+            self.reload_text.text = f"Reloading... {max(0.0, self.reload_timer):.1f}s"
+            self.gun.rotation_z = -5 - (self.reload_time - self.reload_timer) * 18
+            if self.reload_timer <= 0:
+                self.ammo = self.magazine_size
+                self.is_reloading = False
+                self.reload_timer = 0.0
+                self.gun.rotation_z = -5
+                self.reload_text.enabled = False
+
         if self.health > 0:
             if self.world_y < -20:
                 self.health = 0
@@ -231,6 +299,10 @@ class Player(FirstPersonController):
                 self.healthbar.scale_x = max(0.0, (self.health / float(self.max_health)) * self.healthbar_size.x)
             if hasattr(self, 'health_text') and self.health_text and self.health_text.enabled:
                 self.health_text.text = f"{int(max(0, self.health))} / {self.max_health} HP"
+            if hasattr(self, 'ammo_text') and self.ammo_text:
+                self.ammo_text.text = f"{self.ammo} / {self.magazine_size}"
+            if not self.is_reloading and hasattr(self, 'reload_text') and self.reload_text:
+                self.reload_text.enabled = False
 
             super().update()
         else:
@@ -249,6 +321,10 @@ class Player(FirstPersonController):
         if self.health <= 0:
             if key in ('r', 'space', 'enter'):
                 self.respawn()
+            return
+
+        if key == 'e':
+            self.reload()
             return
 
         if key == 'space':

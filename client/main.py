@@ -139,12 +139,17 @@ def get_local_ip():
         return '127.0.0.1'
 
 
+DEFAULT_SERVER = "game.24x7stream.shop"
+
+
 def get_connected_devices():
     """
     Get prioritized list of candidate server IP addresses.
-    Prioritizes Tailscale IP and peers, followed by local LAN IP and localhost.
+    Prioritizes default public server (game.24x7stream.shop), followed by
+    Tailscale IP and peers, local LAN IP, other active interface IPs, and localhost.
     """
-    ips = []
+    ips = [DEFAULT_SERVER]
+
     ts_ip = get_tailscale_ip()
     if ts_ip and ts_ip not in ips:
         ips.append(ts_ip)
@@ -156,6 +161,23 @@ def get_connected_devices():
     local_ip = get_local_ip()
     if local_ip and local_ip not in ips:
         ips.append(local_ip)
+
+    # Collect any other active non-loopback, non-APIPA IPv4 network interfaces
+    try:
+        for iface, addrs in psutil.net_if_addrs().items():
+            for a in addrs:
+                if getattr(a, 'family', None) == socket.AF_INET:
+                    addr = a.address
+                    if addr.startswith('127.'):
+                        continue
+                    parts = addr.split('.')
+                    if len(parts) == 4 and all(p.isdigit() for p in parts):
+                        if int(parts[0]) == 169 and int(parts[1]) == 254:
+                            continue  # Skip APIPA link-local
+                        if addr not in ips:
+                            ips.append(addr)
+    except Exception:
+        pass
 
     if '127.0.0.1' not in ips:
         ips.append('127.0.0.1')
@@ -201,6 +223,10 @@ def get_user_input():
     input_font = font.Font(family="Arial", size=20, weight="normal")
     title_font = font.Font(family="Helvetica", size=35, weight="bold")
 
+    # Configure Combobox dropdown popup list styling for clean, readable text
+    root.option_add('*TCombobox*Listbox.font', input_font)
+    root.option_add('*TCombobox*Listbox.justify', 'center')
+
     frame = tk.Frame(root, bg='#010d25')
     canvas.create_window(screen_width // 2, screen_height // 2, window=frame, anchor='center')
 
@@ -240,7 +266,7 @@ def get_user_input():
     server_label.pack(pady=(20, 10))
 
     ip_addresses = get_connected_devices()
-    default_ip = ip_addresses[0] if ip_addresses else "127.0.0.1"
+    default_ip = DEFAULT_SERVER
     server_var = tk.StringVar(value=default_ip)
     server_combobox = ttk.Combobox(frame, textvariable=server_var, values=ip_addresses, font=input_font, width=25, justify='center')
     server_combobox.pack(pady=(0, 5))
@@ -282,13 +308,14 @@ def get_user_input():
     try:
         pygame.mixer.init()
         pygame.mixer.music.load("assets/music.mp3")
+        pygame.mixer.music.set_volume(0.3)
         pygame.mixer.music.play(-1)
     except pygame.error as e:
         print(f"[WARNING] Audio initialization failed: {e}")
 
     root.mainloop()
-    username = username_var.get()
-    server_addr = server_var.get()
+    username = username_var.get().strip() or default_color_name
+    server_addr = server_var.get().strip()
     return username, server_addr, int(port_var.get())
 
 username, server_addr, server_port = get_user_input()
@@ -439,6 +466,11 @@ def handle_server_info(info):
         b_x_dir = info["x_direction"]
         b_damage = info.get("damage", 10)
         Bullet(b_pos, b_dir, b_x_dir, n, b_damage, slave=True)
+        try:
+            if player and player.gun_sound:
+                player.gun_sound.play()
+        except Exception:
+            pass
 
     elif obj_type == "health_update":
         enemy_id = str(info.get("id"))
@@ -488,14 +520,28 @@ def input(key):
             player.respawn()
         return
 
+    if key == "e":
+        player.reload()
+        return
+
     if key == "left mouse down" and player.health > 0:
+        if player.is_reloading:
+            return
+        if player.ammo <= 0:
+            player.reload()
+            return
+
         b_pos = player.position + ursina.Vec3(0, 2, 0)
         bullet = Bullet(b_pos, player.world_rotation_y, -player.camera_pivot.world_rotation_x, n, ignore_entity=player)
+        player.ammo -= 1
+        if player.ammo <= 0:
+            player.reload()
         n.send_bullet(bullet)
         try:
-            player.gun_sound.play()
-        except Exception:
-            pass
+            if player.gun_sound:
+                player.gun_sound.play()
+        except Exception as e:
+            print(f"[WARNING] Gun sound playback failed: {e}")
 
 
 def main():

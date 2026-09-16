@@ -1,0 +1,4 @@
+﻿ursina
+psutil
+pygame
+Pillow
