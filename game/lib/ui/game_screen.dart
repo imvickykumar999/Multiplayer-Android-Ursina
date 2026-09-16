@@ -1,9 +1,7 @@
 import 'dart:math';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:flutter/services.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
 
 import '../models/player.dart';
@@ -42,8 +40,6 @@ class _GameScreenState extends State<GameScreen>
   double _networkTimer = 0.0;
   vm.Vector3 _prevNetworkPos = vm.Vector3.zero();
   double _prevNetworkYaw = 0.0;
-  ui.Image? _floorTexture;
-  ui.Image? _wallTexture;
 
   @override
   void initState() {
@@ -51,7 +47,6 @@ class _GameScreenState extends State<GameScreen>
     _arenaBoxes = MapData.getArenaBoxes();
     _prevNetworkPos = widget.player.position.clone();
     _prevNetworkYaw = widget.player.yaw;
-    _loadBlockTextures();
 
     // Listen for server packets
     widget.network.addListener(_handleServerMessage);
@@ -65,24 +60,6 @@ class _GameScreenState extends State<GameScreen>
 
     // 60 FPS Game Loop Ticker
     _ticker = createTicker(_onTick)..start();
-  }
-
-  Future<void> _loadBlockTextures() async {
-    final floorTexture = await _decodeTexture('assets/floor.png');
-    final wallTexture = await _decodeTexture('assets/wall.png');
-    if (!mounted) return;
-    setState(() {
-      _floorTexture = floorTexture;
-      _wallTexture = wallTexture;
-    });
-  }
-
-  Future<ui.Image> _decodeTexture(String assetPath) async {
-    final data = await rootBundle.load(assetPath);
-    final codec = await ui.instantiateImageCodec(data.buffer.asUint8List());
-    final frame = await codec.getNextFrame();
-    codec.dispose();
-    return frame.image;
   }
 
   @override
@@ -350,8 +327,6 @@ class _GameScreenState extends State<GameScreen>
                 bullets: _bullets,
                 arenaBoxes: _arenaBoxes,
                 muzzleFlashTimer: _muzzleFlashTimer,
-                floorTexture: _floorTexture,
-                wallTexture: _wallTexture,
               ),
             ),
           ),

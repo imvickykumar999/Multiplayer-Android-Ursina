@@ -5,6 +5,8 @@ class AudioService {
   static final AudioPlayer _musicPlayer = AudioPlayer();
   static final AudioPlayer _sfxPlayer = AudioPlayer();
   static bool _musicPlaying = false;
+  static int _queuedGunSounds = 0;
+  static bool _gunSoundWorkerRunning = false;
 
   static Future<void> playMusic() async {
     try {
@@ -19,12 +21,23 @@ class AudioService {
   }
 
   static Future<void> playGunSound() async {
+    _queuedGunSounds++;
+    if (_gunSoundWorkerRunning) return;
+
+    _gunSoundWorkerRunning = true;
     try {
-      await _sfxPlayer.stop();
-      await _sfxPlayer.setVolume(1.0);
-      await _sfxPlayer.play(AssetSource('bullet.mp3'));
+      while (_queuedGunSounds > 0) {
+        _queuedGunSounds--;
+        await _sfxPlayer.setReleaseMode(ReleaseMode.release);
+        await _sfxPlayer.setVolume(1.0);
+        await _sfxPlayer.play(AssetSource('bullet.mp3'));
+        await _sfxPlayer.onPlayerComplete.first;
+      }
     } catch (e) {
       debugPrint('[Audio] Failed to play gun sound: $e');
+      _queuedGunSounds = 0;
+    } finally {
+      _gunSoundWorkerRunning = false;
     }
   }
 

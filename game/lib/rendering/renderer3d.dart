@@ -1,5 +1,4 @@
 import 'dart:math';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
@@ -14,9 +13,6 @@ class RenderFace {
   final double depth;
   final Color color;
   final Color? borderColor;
-  final ui.Image? texture;
-  final Rect? textureBounds;
-  final double textureTilePixels;
   final bool upperFloorTop;
 
   RenderFace({
@@ -24,9 +20,6 @@ class RenderFace {
     required this.depth,
     required this.color,
     this.borderColor,
-    this.texture,
-    this.textureBounds,
-    this.textureTilePixels = 32.0,
     this.upperFloorTop = false,
   });
 }
@@ -38,8 +31,6 @@ class ArenaRenderer3D extends CustomPainter {
   final List<ArenaBox> arenaBoxes;
   final double muzzleFlashTimer;
   final double fov; // in degrees
-  final ui.Image? floorTexture;
-  final ui.Image? wallTexture;
 
   ArenaRenderer3D({
     required this.player,
@@ -48,8 +39,6 @@ class ArenaRenderer3D extends CustomPainter {
     required this.arenaBoxes,
     this.muzzleFlashTimer = 0.0,
     this.fov = 75.0,
-    this.floorTexture,
-    this.wallTexture,
   });
 
   @override
@@ -208,34 +197,8 @@ class ArenaRenderer3D extends CustomPainter {
       }
       path.close();
 
-      // Paint an opaque block first so transparent texels cannot reveal
-      // geometry behind the wall or floor.
-      paint.shader = null;
       paint.color = face.color;
       canvas.drawPath(path, paint);
-
-      if (face.texture != null && face.textureBounds != null) {
-        final image = face.texture!;
-        final bounds = face.textureBounds!;
-        final scaleX = image.width / face.textureTilePixels;
-        final scaleY = image.height / face.textureTilePixels;
-        final textureMatrix = vm.Matrix4.identity()
-          ..translateByDouble(-bounds.left, -bounds.top, 0.0, 1.0)
-          ..scaleByDouble(scaleX, scaleY, 1.0, 1.0);
-
-        canvas.save();
-        canvas.clipPath(path);
-        paint.shader = ui.ImageShader(
-          image,
-          TileMode.repeated,
-          TileMode.repeated,
-          textureMatrix.storage,
-        );
-        paint.color = Colors.white;
-        canvas.drawRect(bounds, paint);
-        canvas.restore();
-        paint.shader = null;
-      }
 
       if (face.borderColor != null) {
         borderPaint.color = face.borderColor!;
@@ -377,19 +340,6 @@ class ArenaRenderer3D extends CustomPainter {
       final b = (baseB * intensity).toInt().clamp(0, 255);
       final faceColor = Color.fromARGB(255, r, g, b);
 
-      final isFloor = box.textureType == 'floor';
-      final texture = isFloor
-          ? floorTexture
-          : (box.textureType == 'wall' ||
-                box.textureType == 'pillar' ||
-                box.textureType == 'stair' ||
-                box.textureType == 'cover')
-          ? wallTexture
-          : null;
-      final textureBounds = texture == null
-          ? null
-          : _boundsForPoints(screenPoints);
-
       Color? borderColor;
       if (box.textureType == 'wall' ||
           box.textureType == 'pillar' ||
@@ -413,29 +363,15 @@ class ArenaRenderer3D extends CustomPainter {
         RenderFace(
           points: screenPoints,
           depth: avgDepth,
-          color: texture == null ? faceColor : Colors.white,
+          color: faceColor,
           borderColor: borderColor,
-          texture: texture,
-          textureBounds: textureBounds,
-          textureTilePixels: isFloor ? 44.0 : 28.0,
-          upperFloorTop: isFloor && box.center.y > 1.0 && face.normal.y > 0,
+          upperFloorTop:
+              box.textureType == 'floor' &&
+              box.center.y > 1.0 &&
+              face.normal.y > 0,
         ),
       );
     }
-  }
-
-  Rect _boundsForPoints(List<Offset> points) {
-    var minX = points.first.dx;
-    var maxX = points.first.dx;
-    var minY = points.first.dy;
-    var maxY = points.first.dy;
-    for (final point in points.skip(1)) {
-      minX = min(minX, point.dx);
-      maxX = max(maxX, point.dx);
-      minY = min(minY, point.dy);
-      maxY = max(maxY, point.dy);
-    }
-    return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
 
   void _generateBulletFaces({
