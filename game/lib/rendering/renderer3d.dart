@@ -359,20 +359,37 @@ class ArenaRenderer3D extends CustomPainter {
         );
       }
 
-      facesOut.add(
-        RenderFace(
-          points: screenPoints,
-          depth: avgDepth,
-          color: faceColor,
-          borderColor: borderColor,
-          upperFloorTop:
-              box.textureType == 'floor' &&
-              box.center.y > 1.0 &&
-              face.normal.y > 0,
-        ),
-      );
+      final center =
+          screenPoints.fold<Offset>(Offset.zero, (sum, point) => sum + point) /
+          screenPoints.length.toDouble();
+      final centerDepth = avgDepth;
+      final upperFloorTop =
+          box.textureType == 'floor' && box.center.y > 1.0 && face.normal.y > 0;
+
+      // A large projected quad can cross another face in screen space. Split
+      // it into triangles so each piece gets a more accurate depth order.
+      for (int i = 0; i < screenPoints.length; i++) {
+        final nextIndex = (i + 1) % screenPoints.length;
+        final triangle = [center, screenPoints[i], screenPoints[nextIndex]];
+        final triangleDepth =
+            (centerDepth +
+                _projectedDepth(clipped[i]) +
+                _projectedDepth(clipped[nextIndex])) /
+            3.0;
+        facesOut.add(
+          RenderFace(
+            points: triangle,
+            depth: triangleDepth,
+            color: faceColor,
+            borderColor: i == 0 ? borderColor : null,
+            upperFloorTop: upperFloorTop,
+          ),
+        );
+      }
     }
   }
+
+  double _projectedDepth(vm.Vector3 point) => point.z;
 
   void _generateBulletFaces({
     required Bullet bullet,
