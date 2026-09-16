@@ -1,6 +1,9 @@
 import 'dart:math';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart' as vm;
+
 import '../models/player.dart';
 import '../models/enemy.dart';
 import '../models/bullet.dart';
@@ -11,12 +14,16 @@ class RenderFace {
   final double depth;
   final Color color;
   final Color? borderColor;
+  final ui.Image? texture;
+  final bool upperFloorTop;
 
   RenderFace({
     required this.points,
     required this.depth,
     required this.color,
     this.borderColor,
+    this.texture,
+    this.upperFloorTop = false,
   });
 }
 
@@ -27,6 +34,8 @@ class ArenaRenderer3D extends CustomPainter {
   final List<ArenaBox> arenaBoxes;
   final double muzzleFlashTimer;
   final double fov; // in degrees
+  final ui.Image? floorTexture;
+  final ui.Image? wallTexture;
 
   ArenaRenderer3D({
     required this.player,
@@ -35,6 +44,8 @@ class ArenaRenderer3D extends CustomPainter {
     required this.arenaBoxes,
     this.muzzleFlashTimer = 0.0,
     this.fov = 75.0,
+    this.floorTexture,
+    this.wallTexture,
   });
 
   @override
@@ -47,7 +58,11 @@ class ArenaRenderer3D extends CustomPainter {
 
     // 2. Camera setup
     // Camera eye position: player position + eye offset (1.4 units up)
-    final camPos = vm.Vector3(player.position.x, player.position.y + 1.4, player.position.z);
+    final camPos = vm.Vector3(
+      player.position.x,
+      player.position.y + 1.4,
+      player.position.z,
+    );
     final yawRad = player.yaw * pi / 180.0;
     final pitchRad = player.pitch * pi / 180.0;
 
@@ -97,7 +112,11 @@ class ArenaRenderer3D extends CustomPainter {
 
       // Enemy body cube (1.0 x 1.8 x 1.0)
       final bodyBox = ArenaBox(
-        center: vm.Vector3(enemy.position.x, enemy.position.y + 0.9, enemy.position.z),
+        center: vm.Vector3(
+          enemy.position.x,
+          enemy.position.y + 0.9,
+          enemy.position.z,
+        ),
         scale: vm.Vector3(1.0, 1.8, 1.0),
         textureType: 'enemy',
         baseColor: enemy.color,
@@ -120,7 +139,8 @@ class ArenaRenderer3D extends CustomPainter {
       final yawE = enemy.rotationY * pi / 180.0;
       final eFwd = vm.Vector3(sin(yawE), 0, cos(yawE));
       final eRight = vm.Vector3(cos(yawE), 0, -sin(yawE));
-      final gunPos = enemy.position + vm.Vector3(0, 1.0, 0) + eRight * 0.6 + eFwd * 0.4;
+      final gunPos =
+          enemy.position + vm.Vector3(0, 1.0, 0) + eRight * 0.6 + eFwd * 0.4;
       final gunBox = ArenaBox(
         center: gunPos,
         scale: vm.Vector3(0.2, 0.2, 0.7),
@@ -159,8 +179,15 @@ class ArenaRenderer3D extends CustomPainter {
       );
     }
 
-    // 6. Sort faces by depth (farthest first -> Painter's Algorithm)
-    facesToDraw.sort((a, b) => b.depth.compareTo(a.depth));
+    // 6. Sort faces by depth (farthest first). Upper-floor tops get a stable
+    // occlusion layer so the ground floor cannot bleed through them at steep
+    // camera angles where average polygon depth is ambiguous.
+    facesToDraw.sort((a, b) {
+      if (a.upperFloorTop != b.upperFloorTop) {
+        return a.upperFloorTop ? 1 : -1;
+      }
+      return b.depth.compareTo(a.depth);
+    });
 
     // 7. Render all sorted faces
     final paint = Paint()..style = PaintingStyle.fill;
@@ -177,8 +204,17 @@ class ArenaRenderer3D extends CustomPainter {
       }
       path.close();
 
+      paint.shader = face.texture == null
+          ? null
+          : ui.ImageShader(
+              face.texture!,
+              TileMode.repeated,
+              TileMode.repeated,
+              vm.Matrix4.identity().storage,
+            );
       paint.color = face.color;
       canvas.drawPath(path, paint);
+      paint.shader = null;
 
       if (face.borderColor != null) {
         borderPaint.color = face.borderColor!;
@@ -187,7 +223,16 @@ class ArenaRenderer3D extends CustomPainter {
     }
 
     // 8. Render Billboarded Name Tags for Enemies
-    _drawEnemyNameTags(canvas, camPos, right, up, forward, width, height, focalLength);
+    _drawEnemyNameTags(
+      canvas,
+      camPos,
+      right,
+      up,
+      forward,
+      width,
+      height,
+      focalLength,
+    );
 
     // 9. Render Local Player Gun Viewmodel & Muzzle Flash
     if (player.health > 0) {
@@ -277,11 +322,7 @@ class ArenaRenderer3D extends CustomPainter {
       final camVerts = <vm.Vector3>[];
       for (final v in face.verts) {
         final d = v - camPos;
-        camVerts.add(vm.Vector3(
-          d.dot(right),
-          d.dot(up),
-          d.dot(forward),
-        ));
+        camVerts.add(vm.Vector3(d.dot(right), d.dot(up), d.dot(forward)));
       }
 
       // 3. Clip polygon against near plane camZ >= nearPlane
@@ -302,7 +343,10 @@ class ArenaRenderer3D extends CustomPainter {
 
       // 5. Lighting calculation
       final diffuse = max(0.0, face.normal.dot(lightDir));
-      final intensity = (0.4 + diffuse * 0.6 + face.shadeModifier).clamp(0.2, 1.0);
+      final intensity = (0.4 + diffuse * 0.6 + face.shadeModifier).clamp(
+        0.2,
+        1.0,
+      );
 
       final baseR = (box.baseColor.r * 255.0).round().clamp(0, 255);
       final baseG = (box.baseColor.g * 255.0).round().clamp(0, 255);
@@ -312,19 +356,45 @@ class ArenaRenderer3D extends CustomPainter {
       final b = (baseB * intensity).toInt().clamp(0, 255);
       final faceColor = Color.fromARGB(255, r, g, b);
 
+      final isFloor = box.textureType == 'floor';
+      final texture = isFloor
+          ? floorTexture
+          : (box.textureType == 'wall' ||
+                box.textureType == 'pillar' ||
+                box.textureType == 'stair' ||
+                box.textureType == 'cover')
+          ? wallTexture
+          : null;
+
       Color? borderColor;
-      if (box.textureType == 'wall' || box.textureType == 'pillar' || box.textureType == 'stair') {
-        borderColor = Color.fromARGB(160, (r * 0.7).toInt(), (g * 0.7).toInt(), (b * 0.7).toInt());
+      if (box.textureType == 'wall' ||
+          box.textureType == 'pillar' ||
+          box.textureType == 'stair') {
+        borderColor = Color.fromARGB(
+          160,
+          (r * 0.7).toInt(),
+          (g * 0.7).toInt(),
+          (b * 0.7).toInt(),
+        );
       } else if (box.textureType == 'floor') {
-        borderColor = Color.fromARGB(80, (r * 0.85).toInt(), (g * 0.85).toInt(), (b * 0.85).toInt());
+        borderColor = Color.fromARGB(
+          80,
+          (r * 0.85).toInt(),
+          (g * 0.85).toInt(),
+          (b * 0.85).toInt(),
+        );
       }
 
-      facesOut.add(RenderFace(
-        points: screenPoints,
-        depth: avgDepth,
-        color: faceColor,
-        borderColor: borderColor,
-      ));
+      facesOut.add(
+        RenderFace(
+          points: screenPoints,
+          depth: avgDepth,
+          color: texture == null ? faceColor : Colors.white,
+          borderColor: borderColor,
+          texture: texture,
+          upperFloorTop: isFloor && box.center.y > 1.0 && face.normal.y > 0,
+        ),
+      );
     }
   }
 
@@ -358,12 +428,14 @@ class ArenaRenderer3D extends CustomPainter {
       points.add(Offset(sx + cos(angle) * radius, sy + sin(angle) * radius));
     }
 
-    facesOut.add(RenderFace(
-      points: points,
-      depth: cz,
-      color: const Color(0xFFFFEB3B),
-      borderColor: const Color(0xFFFF9800),
-    ));
+    facesOut.add(
+      RenderFace(
+        points: points,
+        depth: cz,
+        color: const Color(0xFFFFEB3B),
+        borderColor: const Color(0xFFFF9800),
+      ),
+    );
   }
 
   List<vm.Vector3> _clipPolygonNearPlane(List<vm.Vector3> verts, double nearZ) {
@@ -379,18 +451,22 @@ class ArenaRenderer3D extends CustomPainter {
         outList.add(next);
       } else if (curIn && !nextIn) {
         final t = (nearZ - cur.z) / (next.z - cur.z);
-        outList.add(vm.Vector3(
-          cur.x + (next.x - cur.x) * t,
-          cur.y + (next.y - cur.y) * t,
-          nearZ,
-        ));
+        outList.add(
+          vm.Vector3(
+            cur.x + (next.x - cur.x) * t,
+            cur.y + (next.y - cur.y) * t,
+            nearZ,
+          ),
+        );
       } else if (!curIn && nextIn) {
         final t = (nearZ - cur.z) / (next.z - cur.z);
-        outList.add(vm.Vector3(
-          cur.x + (next.x - cur.x) * t,
-          cur.y + (next.y - cur.y) * t,
-          nearZ,
-        ));
+        outList.add(
+          vm.Vector3(
+            cur.x + (next.x - cur.x) * t,
+            cur.y + (next.y - cur.y) * t,
+            nearZ,
+          ),
+        );
         outList.add(next);
       }
     }
@@ -410,7 +486,11 @@ class ArenaRenderer3D extends CustomPainter {
     for (final enemy in enemies) {
       if (enemy.isDead || enemy.health <= 0) continue;
 
-      final headPos = vm.Vector3(enemy.position.x, enemy.position.y + 2.3, enemy.position.z);
+      final headPos = vm.Vector3(
+        enemy.position.x,
+        enemy.position.y + 2.3,
+        enemy.position.z,
+      );
       final d = headPos - camPos;
       final cz = d.dot(forward);
       if (cz < 0.5) continue; // Behind or too close
@@ -434,10 +514,8 @@ class ArenaRenderer3D extends CustomPainter {
         ),
       );
 
-      final tp = TextPainter(
-        text: textSpan,
-        textDirection: TextDirection.ltr,
-      )..layout();
+      final tp = TextPainter(text: textSpan, textDirection: TextDirection.ltr)
+        ..layout();
 
       final bgRect = Rect.fromCenter(
         center: Offset(sx, sy),
@@ -446,14 +524,27 @@ class ArenaRenderer3D extends CustomPainter {
       );
 
       final bgPaint = Paint()..color = Colors.black.withAlpha(160);
-      canvas.drawRRect(RRect.fromRectAndRadius(bgRect, const Radius.circular(4)), bgPaint);
+      canvas.drawRRect(
+        RRect.fromRectAndRadius(bgRect, const Radius.circular(4)),
+        bgPaint,
+      );
 
       // Mini health bar under name tag
       final healthPct = (enemy.health / 250.0).clamp(0.0, 1.0);
-      final hpBarRect = Rect.fromLTWH(bgRect.left + 2, bgRect.bottom + 2, bgRect.width - 4, 3);
+      final hpBarRect = Rect.fromLTWH(
+        bgRect.left + 2,
+        bgRect.bottom + 2,
+        bgRect.width - 4,
+        3,
+      );
       canvas.drawRect(hpBarRect, Paint()..color = Colors.red);
       canvas.drawRect(
-        Rect.fromLTWH(hpBarRect.left, hpBarRect.top, hpBarRect.width * healthPct, hpBarRect.height),
+        Rect.fromLTWH(
+          hpBarRect.left,
+          hpBarRect.top,
+          hpBarRect.width * healthPct,
+          hpBarRect.height,
+        ),
         Paint()..color = Colors.greenAccent,
       );
 
@@ -491,7 +582,10 @@ class ArenaRenderer3D extends CustomPainter {
 
     // Main receiver
     canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(-20, 20, 90, 45), const Radius.circular(5)),
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(-20, 20, 90, 45),
+        const Radius.circular(5),
+      ),
       gunPaint,
     );
 
@@ -505,7 +599,10 @@ class ArenaRenderer3D extends CustomPainter {
 
     // Grip
     canvas.drawRRect(
-      RRect.fromRectAndRadius(const Rect.fromLTWH(-15, 60, 35, 70), const Radius.circular(4)),
+      RRect.fromRectAndRadius(
+        const Rect.fromLTWH(-15, 60, 35, 70),
+        const Radius.circular(4),
+      ),
       darkMetalPaint,
     );
 
@@ -519,7 +616,10 @@ class ArenaRenderer3D extends CustomPainter {
       for (int i = 0; i < 8; i++) {
         final angle = i * pi / 4.0;
         final r = (i % 2 == 0) ? flashSize : flashSize * 0.4;
-        final pt = Offset(centerFlash.dx + cos(angle) * r, centerFlash.dy + sin(angle) * r);
+        final pt = Offset(
+          centerFlash.dx + cos(angle) * r,
+          centerFlash.dy + sin(angle) * r,
+        );
         if (i == 0) {
           flashPath.moveTo(pt.dx, pt.dy);
         } else {
@@ -552,10 +652,26 @@ class ArenaRenderer3D extends CustomPainter {
     canvas.drawCircle(Offset(cx, cy), 2.0, crosshairPaint);
 
     // 4 reticle ticks
-    canvas.drawLine(Offset(cx - gap - len, cy), Offset(cx - gap, cy), crosshairPaint);
-    canvas.drawLine(Offset(cx + gap, cy), Offset(cx + gap + len, cy), crosshairPaint);
-    canvas.drawLine(Offset(cx, cy - gap - len), Offset(cx, cy - gap), crosshairPaint);
-    canvas.drawLine(Offset(cx, cy + gap), Offset(cx, cy + gap + len), crosshairPaint);
+    canvas.drawLine(
+      Offset(cx - gap - len, cy),
+      Offset(cx - gap, cy),
+      crosshairPaint,
+    );
+    canvas.drawLine(
+      Offset(cx + gap, cy),
+      Offset(cx + gap + len, cy),
+      crosshairPaint,
+    );
+    canvas.drawLine(
+      Offset(cx, cy - gap - len),
+      Offset(cx, cy - gap),
+      crosshairPaint,
+    );
+    canvas.drawLine(
+      Offset(cx, cy + gap),
+      Offset(cx, cy + gap + len),
+      crosshairPaint,
+    );
   }
 
   @override
