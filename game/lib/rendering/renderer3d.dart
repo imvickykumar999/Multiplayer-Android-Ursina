@@ -15,6 +15,8 @@ class RenderFace {
   final Color color;
   final Color? borderColor;
   final ui.Image? texture;
+  final Rect? textureBounds;
+  final double textureTilePixels;
   final bool upperFloorTop;
 
   RenderFace({
@@ -23,6 +25,8 @@ class RenderFace {
     required this.color,
     this.borderColor,
     this.texture,
+    this.textureBounds,
+    this.textureTilePixels = 32.0,
     this.upperFloorTop = false,
   });
 }
@@ -204,17 +208,34 @@ class ArenaRenderer3D extends CustomPainter {
       }
       path.close();
 
-      paint.shader = face.texture == null
-          ? null
-          : ui.ImageShader(
-              face.texture!,
-              TileMode.repeated,
-              TileMode.repeated,
-              vm.Matrix4.identity().storage,
-            );
+      // Paint an opaque block first so transparent texels cannot reveal
+      // geometry behind the wall or floor.
+      paint.shader = null;
       paint.color = face.color;
       canvas.drawPath(path, paint);
-      paint.shader = null;
+
+      if (face.texture != null && face.textureBounds != null) {
+        final image = face.texture!;
+        final bounds = face.textureBounds!;
+        final scaleX = image.width / face.textureTilePixels;
+        final scaleY = image.height / face.textureTilePixels;
+        final textureMatrix = vm.Matrix4.identity()
+          ..translateByDouble(-bounds.left, -bounds.top, 0.0, 1.0)
+          ..scaleByDouble(scaleX, scaleY, 1.0, 1.0);
+
+        canvas.save();
+        canvas.clipPath(path);
+        paint.shader = ui.ImageShader(
+          image,
+          TileMode.repeated,
+          TileMode.repeated,
+          textureMatrix.storage,
+        );
+        paint.color = Colors.white;
+        canvas.drawRect(bounds, paint);
+        canvas.restore();
+        paint.shader = null;
+      }
 
       if (face.borderColor != null) {
         borderPaint.color = face.borderColor!;
@@ -365,6 +386,9 @@ class ArenaRenderer3D extends CustomPainter {
                 box.textureType == 'cover')
           ? wallTexture
           : null;
+      final textureBounds = texture == null
+          ? null
+          : _boundsForPoints(screenPoints);
 
       Color? borderColor;
       if (box.textureType == 'wall' ||
@@ -392,10 +416,26 @@ class ArenaRenderer3D extends CustomPainter {
           color: texture == null ? faceColor : Colors.white,
           borderColor: borderColor,
           texture: texture,
+          textureBounds: textureBounds,
+          textureTilePixels: isFloor ? 44.0 : 28.0,
           upperFloorTop: isFloor && box.center.y > 1.0 && face.normal.y > 0,
         ),
       );
     }
+  }
+
+  Rect _boundsForPoints(List<Offset> points) {
+    var minX = points.first.dx;
+    var maxX = points.first.dx;
+    var minY = points.first.dy;
+    var maxY = points.first.dy;
+    for (final point in points.skip(1)) {
+      minX = min(minX, point.dx);
+      maxX = max(maxX, point.dx);
+      minY = min(minY, point.dy);
+      maxY = max(maxY, point.dy);
+    }
+    return Rect.fromLTRB(minX, minY, maxX, maxY);
   }
 
   void _generateBulletFaces({
