@@ -123,7 +123,7 @@ class Player {
     position.y += velocityY * dt;
 
     // Check floor height at current (x, z)
-    final floorY = _calculateFloorHeight(position.x, position.z);
+    final floorY = _calculateFloorHeight(position.x, position.z, position.y);
 
     if (position.y <= floorY) {
       position.y = floorY;
@@ -143,22 +143,27 @@ class Player {
     _resolveWallCollisions(arenaBoxes);
   }
 
-  double _calculateFloorHeight(double x, double z) {
+  double _calculateFloorHeight(double x, double z, double currentY) {
+    // Upper platforms are not ramps. Only use them when the player is already
+    // at that elevation; the stair strips below provide the only ground-level
+    // route onto the first floor.
+    final canStandOnUpperFloor = currentY >= 5.5;
+
     // 1st Floor Slabs (height Y = 6.0)
     // North platform: X: [-20, 20], Z: [6, 20]
-    if (x >= -20 && x <= 20 && z >= 6 && z <= 20) {
+    if (canStandOnUpperFloor && x >= -20 && x <= 20 && z >= 6 && z <= 20) {
       return 6.0;
     }
     // South platform: X: [-20, 20], Z: [-20, -6]
-    if (x >= -20 && x <= 20 && z >= -20 && z <= -6) {
+    if (canStandOnUpperFloor && x >= -20 && x <= 20 && z >= -20 && z <= -6) {
       return 6.0;
     }
     // East walkway: X: [12, 20], Z: [-6, 6]
-    if (x >= 12 && x <= 20 && z >= -6 && z <= 6) {
+    if (canStandOnUpperFloor && x >= 12 && x <= 20 && z >= -6 && z <= 6) {
       return 6.0;
     }
     // West walkway: X: [-20, -12], Z: [-6, 6]
-    if (x >= -20 && x <= -12 && z >= -6 && z <= 6) {
+    if (canStandOnUpperFloor && x >= -20 && x <= -12 && z >= -6 && z <= 6) {
       return 6.0;
     }
 
