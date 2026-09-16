@@ -1,6 +1,8 @@
 import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:vector_math/vector_math_64.dart';
+
 import 'enemy.dart';
 import 'map_data.dart';
 
@@ -32,14 +34,14 @@ class Player {
     required this.id,
     required this.username,
     Color? color,
-  })  : position = startPos.clone(),
-        yaw = 0.0,
-        pitch = 0.0,
-        maxHealth = 250,
-        health = 250,
-        magazineSize = 15,
-        ammo = 15,
-        color = color ?? getPlayerColor(id, username);
+  }) : position = startPos.clone(),
+       yaw = 0.0,
+       pitch = 0.0,
+       maxHealth = 250,
+       health = 250,
+       magazineSize = 15,
+       ammo = 15,
+       color = color ?? getPlayerColor(id, username);
 
   void jump() {
     if (isGrounded && health > 0) {
@@ -63,7 +65,9 @@ class Player {
 
   void respawn([Vector3? chosenPos]) {
     final rnd = Random();
-    final pos = chosenPos ?? MapData.spawnPoints[rnd.nextInt(MapData.spawnPoints.length)];
+    final pos =
+        chosenPos ??
+        MapData.spawnPoints[rnd.nextInt(MapData.spawnPoints.length)];
     position = pos.clone();
     health = maxHealth;
     ammo = magazineSize;
@@ -76,7 +80,12 @@ class Player {
     pitch = 0.0;
   }
 
-  void update(double dt, double inputX, double inputZ, List<ArenaBox> arenaBoxes) {
+  void update(
+    double dt,
+    double inputX,
+    double inputZ,
+    List<ArenaBox> arenaBoxes,
+  ) {
     if (health <= 0) {
       if (!deathMessageShown) {
         death();
@@ -202,7 +211,10 @@ class Player {
       final minZ = box.minZ - playerRadius;
       final maxZ = box.maxZ + playerRadius;
 
-      if (position.x > minX && position.x < maxX && position.z > minZ && position.z < maxZ) {
+      if (position.x > minX &&
+          position.x < maxX &&
+          position.z > minZ &&
+          position.z < maxZ) {
         // Penetration distances
         final dLeft = position.x - minX;
         final dRight = maxX - position.x;
