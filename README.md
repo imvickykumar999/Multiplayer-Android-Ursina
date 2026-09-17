@@ -2,10 +2,10 @@
 
 A small multiplayer first-person deathmatch game built with [Ursina](https://www.ursinaengine.org/) and Python TCP sockets. One player runs the server and other players connect as clients over a local network or a reachable public address.
 
-<img width="1600" height="722" alt="WhatsApp Image 2026-09-16 at 7 59 29 PM" src="https://github.com/user-attachments/assets/7a095622-cace-4b6b-ab22-a85650ee0829" />
-<img width="1600" height="722" alt="WhatsApp Image 2026-09-16 at 7 59 28 PM (2)" src="https://github.com/user-attachments/assets/5a8ee116-f210-4b19-b6e2-2d4e3109378e" />
-<img width="1600" height="722" alt="WhatsApp Image 2026-09-16 at 7 59 28 PM (1)" src="https://github.com/user-attachments/assets/fc62d38a-21d0-4b61-9d94-5be7ecd3db34" />
-<img width="1600" height="722" alt="WhatsApp Image 2026-09-16 at 7 59 28 PM" src="https://github.com/user-attachments/assets/bbc3a59b-2cb8-4d2e-b88a-5fc56c5e0c7d" />
+![ss1](https://github.com/user-attachments/assets/7a095622-cace-4b6b-ab22-a85650ee0829)
+![ss2](https://github.com/user-attachments/assets/5a8ee116-f210-4b19-b6e2-2d4e3109378e)
+![ss3](https://github.com/user-attachments/assets/fc62d38a-21d0-4b61-9d94-5be7ecd3db34)
+![ss4](https://github.com/user-attachments/assets/bbc3a59b-2cb8-4d2e-b88a-5fc56c5e0c7d)
 
 ## Features
 
