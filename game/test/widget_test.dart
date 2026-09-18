@@ -4,8 +4,8 @@ import 'package:game/main.dart';
 void main() {
   testWidgets('App loads lobby screen smoke test', (WidgetTester tester) async {
     await tester.pumpWidget(const UrsinaMultiplayerApp());
-    expect(find.text('Ursina TCP Deathmatch'), findsOneWidget);
-    expect(find.text('Enter your username:'), findsOneWidget);
-    expect(find.text('Play'), findsOneWidget);
+    expect(find.text('DEATHMATCH 3D'), findsOneWidget);
+    expect(find.text('Callsign / Username'), findsOneWidget);
+    expect(find.text('JOIN BATTLE'), findsOneWidget);
   });
 }

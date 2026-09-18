@@ -23,11 +23,21 @@ class NetworkService {
   final List<String> _outgoingQueue = [];
   Timer? _sendTimer;
 
+  final bool isOffline;
+
   NetworkService({
     required this.serverAddr,
     required this.serverPort,
     required this.username,
-  });
+  }) : isOffline = false;
+
+  NetworkService.offline({
+    required this.username,
+  })  : serverAddr = 'offline',
+        serverPort = 0,
+        isOffline = true,
+        isConnected = true,
+        id = '1';
 
   void addListener(ServerMessageCallback listener) {
     _listeners.add(listener);
@@ -37,7 +47,18 @@ class NetworkService {
     _listeners.remove(listener);
   }
 
+  void dispatchServerMessage(Map<String, dynamic> message) {
+    for (final listener in List.of(_listeners)) {
+      listener(message);
+    }
+  }
+
   Future<void> connect() async {
+    if (isOffline) {
+      isConnected = true;
+      _handshakeComplete = true;
+      return;
+    }
     try {
       _socket = await Socket.connect(
         serverAddr,

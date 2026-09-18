@@ -7,6 +7,7 @@ import '../models/player.dart';
 import '../models/enemy.dart';
 import '../models/bullet.dart';
 import '../models/map_data.dart';
+import '../models/floating_damage.dart';
 
 class RenderFace {
   final List<Offset> points;
@@ -24,6 +25,27 @@ class RenderFace {
   });
 }
 
+class ImpactSpark {
+  vm.Vector3 position;
+  vm.Vector3 velocity;
+  double lifetime;
+  final double maxLifetime;
+  final Color color;
+
+  ImpactSpark({
+    required this.position,
+    required this.velocity,
+    this.lifetime = 0.35,
+    this.color = const Color(0xFFFFD54F),
+  }) : maxLifetime = lifetime;
+
+  bool update(double dt) {
+    position += velocity * dt;
+    lifetime -= dt;
+    return lifetime > 0;
+  }
+}
+
 class ArenaRenderer3D extends CustomPainter {
   final Player player;
   final List<Enemy> enemies;
@@ -31,6 +53,13 @@ class ArenaRenderer3D extends CustomPainter {
   final List<ArenaBox> arenaBoxes;
   final double muzzleFlashTimer;
   final double fov; // in degrees
+  final double hitmarkerTimer;
+  final bool isHeadshotHit;
+  final double damageVignetteTimer;
+  final List<ImpactSpark> sparks;
+  final List<FloatingDamage> floatingDamages;
+  final bool isAds;
+  final double lowHealthPulse;
 
   ArenaRenderer3D({
     required this.player,
@@ -39,6 +68,13 @@ class ArenaRenderer3D extends CustomPainter {
     required this.arenaBoxes,
     this.muzzleFlashTimer = 0.0,
     this.fov = 75.0,
+    this.hitmarkerTimer = 0.0,
+    this.isHeadshotHit = false,
+    this.damageVignetteTimer = 0.0,
+    this.sparks = const [],
+    this.floatingDamages = const [],
+    this.isAds = false,
+    this.lowHealthPulse = 0.0,
   });
 
   @override
@@ -218,12 +254,57 @@ class ArenaRenderer3D extends CustomPainter {
       focalLength,
     );
 
+    // 8.5 Render 3D Impact Sparks
+    if (sparks.isNotEmpty) {
+      _drawImpactSparks(
+        canvas,
+        camPos,
+        right,
+        up,
+        forward,
+        width,
+        height,
+        focalLength,
+        nearPlane,
+      );
+    }
+
+    // 8.6 Render 3D Floating Damage Popups
+    if (floatingDamages.isNotEmpty) {
+      _drawFloatingDamage(
+        canvas,
+        camPos,
+        right,
+        up,
+        forward,
+        width,
+        height,
+        focalLength,
+        nearPlane,
+      );
+    }
+
     // 9. Render Local Player Gun Viewmodel & Muzzle Flash
     if (player.health > 0) {
       _drawViewmodelGun(canvas, width, height);
     }
 
-    // 10. Center Crosshair
+    // 9.4 Render Low Health Pulsing Vignette
+    if (lowHealthPulse > 0 && player.health > 0) {
+      _drawLowHealthPulse(canvas, width, height, lowHealthPulse);
+    }
+
+    // 9.5 Render Damage Flash Vignette
+    if (damageVignetteTimer > 0) {
+      _drawDamageVignette(canvas, width, height);
+    }
+
+    // 9.6 Render ADS Reflex Scope Overlay
+    if (isAds) {
+      _drawAdsOverlay(canvas, width, height);
+    }
+
+    // 10. Center Crosshair & Hitmarker
     _drawCrosshair(canvas, width, height);
   }
 
@@ -546,8 +627,8 @@ class ArenaRenderer3D extends CustomPainter {
   }
 
   void _drawViewmodelGun(Canvas canvas, double width, double height) {
-    final gunBaseX = width * 0.76;
-    final gunBaseY = height * 0.78;
+    final gunBaseX = isAds ? width * 0.50 : width * 0.76;
+    final gunBaseY = isAds ? height * 0.88 : height * 0.78;
 
     // Recoil and reload offsets
     double recoilY = 0.0;
@@ -629,9 +710,159 @@ class ArenaRenderer3D extends CustomPainter {
     canvas.restore();
   }
 
+  void _drawImpactSparks(
+    Canvas canvas,
+    vm.Vector3 camPos,
+    vm.Vector3 right,
+    vm.Vector3 up,
+    vm.Vector3 forward,
+    double width,
+    double height,
+    double focalLength,
+    double nearPlane,
+  ) {
+    for (final spark in sparks) {
+      final d = spark.position - camPos;
+      final cz = d.dot(forward);
+      if (cz < nearPlane) continue;
+
+      final cx = d.dot(right);
+      final cy = d.dot(up);
+
+      final sx = width / 2.0 + (cx / cz) * focalLength;
+      final sy = height / 2.0 - (cy / cz) * focalLength;
+
+      final alpha = (spark.lifetime / spark.maxLifetime).clamp(0.0, 1.0);
+      final sparkPaint = Paint()
+        ..color = spark.color.withValues(alpha: alpha)
+        ..style = PaintingStyle.fill;
+
+      final radius = max(1.5, (0.18 / cz) * focalLength);
+      canvas.drawCircle(Offset(sx, sy), radius, sparkPaint);
+    }
+  }
+
+  void _drawFloatingDamage(
+    Canvas canvas,
+    vm.Vector3 camPos,
+    vm.Vector3 right,
+    vm.Vector3 up,
+    vm.Vector3 forward,
+    double width,
+    double height,
+    double focalLength,
+    double nearPlane,
+  ) {
+    for (final fd in floatingDamages) {
+      final d = fd.position - camPos;
+      final cz = d.dot(forward);
+      if (cz < nearPlane) continue;
+
+      final cx = d.dot(right);
+      final cy = d.dot(up);
+
+      final sx = width / 2.0 + (cx / cz) * focalLength;
+      final sy = height / 2.0 - (cy / cz) * focalLength;
+
+      final alpha = (fd.lifetime / fd.maxLifetime).clamp(0.0, 1.0);
+      final Color textColor = fd.isHeadshot
+          ? const Color(0xFFFF1744)
+          : (fd.isPlayerTakingDamage ? const Color(0xFFFF5722) : const Color(0xFFFFEE58));
+
+      final textSpan = TextSpan(
+        text: fd.text,
+        style: TextStyle(
+          color: textColor.withValues(alpha: alpha),
+          fontSize: fd.isHeadshot ? 16 : 13,
+          fontWeight: FontWeight.w900,
+          shadows: [
+            Shadow(
+              color: Colors.black.withValues(alpha: alpha * 0.9),
+              blurRadius: 4,
+              offset: const Offset(1, 1),
+            ),
+          ],
+        ),
+      );
+
+      final tp = TextPainter(text: textSpan, textDirection: TextDirection.ltr)
+        ..layout();
+      tp.paint(canvas, Offset(sx - tp.width / 2.0, sy - tp.height / 2.0));
+    }
+  }
+
+  void _drawAdsOverlay(Canvas canvas, double width, double height) {
+    // Vignette ring around screen edge for ADS focus
+    final adsPaint = Paint()
+      ..shader = RadialGradient(
+        radius: 0.95,
+        colors: [
+          Colors.transparent,
+          Colors.black.withValues(alpha: 0.35),
+          Colors.black.withValues(alpha: 0.75),
+        ],
+        stops: const [0.45, 0.75, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, width, height));
+
+    canvas.drawRect(Rect.fromLTWH(0, 0, width, height), adsPaint);
+
+    // Reflex scope outer ring
+    final cx = width / 2.0;
+    final cy = height / 2.0;
+    final ringPaint = Paint()
+      ..color = Colors.cyanAccent.withValues(alpha: 0.35)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5;
+
+    canvas.drawCircle(Offset(cx, cy), 32.0, ringPaint);
+  }
+
+  void _drawLowHealthPulse(Canvas canvas, double width, double height, double pulse) {
+    final pulsePaint = Paint()
+      ..shader = RadialGradient(
+        radius: 0.9,
+        colors: [
+          Colors.transparent,
+          Colors.red.withValues(alpha: 0.12 * pulse),
+          Colors.red.withValues(alpha: 0.45 * pulse),
+        ],
+        stops: const [0.55, 0.85, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, width, height));
+
+    canvas.drawRect(Rect.fromLTWH(0, 0, width, height), pulsePaint);
+  }
+
+  void _drawDamageVignette(Canvas canvas, double width, double height) {
+    final alpha = (damageVignetteTimer / 0.35).clamp(0.0, 1.0);
+    final vignettePaint = Paint()
+      ..shader = RadialGradient(
+        radius: 0.85,
+        colors: [
+          Colors.transparent,
+          Colors.red.withValues(alpha: 0.25 * alpha),
+          Colors.red.withValues(alpha: 0.65 * alpha),
+        ],
+        stops: const [0.55, 0.85, 1.0],
+      ).createShader(Rect.fromLTWH(0, 0, width, height));
+
+    canvas.drawRect(Rect.fromLTWH(0, 0, width, height), vignettePaint);
+  }
+
   void _drawCrosshair(Canvas canvas, double width, double height) {
     final cx = width / 2.0;
     final cy = height / 2.0;
+
+    if (isAds) {
+      // Precision Tactical Reflex Reticle
+      final reflexRingPaint = Paint()
+        ..color = const Color(0xFF00E5FF).withValues(alpha: 0.8)
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.0;
+      canvas.drawCircle(Offset(cx, cy), 14.0, reflexRingPaint);
+      canvas.drawCircle(Offset(cx, cy), 2.5, Paint()..color = const Color(0xFF00E5FF));
+      canvas.drawCircle(Offset(cx, cy), 1.0, Paint()..color = Colors.white);
+      return;
+    }
 
     final crosshairPaint = Paint()
       ..color = const Color.fromRGBO(255, 0, 0, 0.7)
@@ -665,6 +896,43 @@ class ArenaRenderer3D extends CustomPainter {
       Offset(cx, cy + gap + len),
       crosshairPaint,
     );
+
+    // Dynamic Hitmarker on hit
+    if (hitmarkerTimer > 0) {
+      final hmAlpha = (hitmarkerTimer / 0.2).clamp(0.0, 1.0);
+      final hmColor = isHeadshotHit
+          ? Color.fromRGBO(255, 40, 40, hmAlpha)
+          : Color.fromRGBO(255, 255, 255, hmAlpha);
+      final hmPaint = Paint()
+        ..color = hmColor
+        ..strokeWidth = isHeadshotHit ? 2.5 : 2.0
+        ..strokeCap = StrokeCap.round;
+
+      const hmDist = 6.0;
+      const hmLen = 8.0;
+
+      // 4 diagonal ticks for X-hitmarker
+      canvas.drawLine(
+        Offset(cx - hmDist, cy - hmDist),
+        Offset(cx - hmDist - hmLen, cy - hmDist - hmLen),
+        hmPaint,
+      );
+      canvas.drawLine(
+        Offset(cx + hmDist, cy - hmDist),
+        Offset(cx + hmDist + hmLen, cy - hmDist - hmLen),
+        hmPaint,
+      );
+      canvas.drawLine(
+        Offset(cx - hmDist, cy + hmDist),
+        Offset(cx - hmDist - hmLen, cy + hmDist + hmLen),
+        hmPaint,
+      );
+      canvas.drawLine(
+        Offset(cx + hmDist, cy + hmDist),
+        Offset(cx + hmDist + hmLen, cy + hmDist + hmLen),
+        hmPaint,
+      );
+    }
   }
 
   @override

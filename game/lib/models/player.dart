@@ -25,6 +25,12 @@ class Player {
   bool deathMessageShown = false;
   double respawnTimer = 0.0;
 
+  // Combat Stats
+  int kills = 0;
+  int deaths = 0;
+  int killstreak = 0;
+  int highestStreak = 0;
+
   final String id;
   final String username;
   final Color color;
@@ -56,18 +62,58 @@ class Player {
     reloadTimer = reloadTime;
   }
 
+  void recordKill() {
+    kills++;
+    killstreak++;
+    if (killstreak > highestStreak) {
+      highestStreak = killstreak;
+    }
+  }
+
+  void recordDeath() {
+    deaths++;
+    killstreak = 0;
+  }
+
   void death() {
     if (deathMessageShown) return;
     deathMessageShown = true;
     health = 0;
     respawnTimer = 5.0;
+    recordDeath();
   }
 
-  void respawn([Vector3? chosenPos]) {
-    final rnd = Random();
-    final pos =
-        chosenPos ??
-        MapData.spawnPoints[rnd.nextInt(MapData.spawnPoints.length)];
+  void respawn({Vector3? chosenPos, List<Enemy>? enemies}) {
+    Vector3 pos;
+    if (chosenPos != null) {
+      pos = chosenPos;
+    } else if (enemies != null && enemies.isNotEmpty) {
+      // Pick spawn point furthest away from living enemies to prevent instant spawn camp
+      final activeEnemies = enemies.where((e) => !e.isDead && e.health > 0).toList();
+      if (activeEnemies.isNotEmpty) {
+        Vector3 bestPoint = MapData.spawnPoints.first;
+        double maxMinDist = -1;
+        for (final sp in MapData.spawnPoints) {
+          double minDistToEnemy = double.infinity;
+          for (final enemy in activeEnemies) {
+            final dist = (sp - enemy.position).length;
+            if (dist < minDistToEnemy) minDistToEnemy = dist;
+          }
+          if (minDistToEnemy > maxMinDist) {
+            maxMinDist = minDistToEnemy;
+            bestPoint = sp;
+          }
+        }
+        pos = bestPoint;
+      } else {
+        final rnd = Random();
+        pos = MapData.spawnPoints[rnd.nextInt(MapData.spawnPoints.length)];
+      }
+    } else {
+      final rnd = Random();
+      pos = MapData.spawnPoints[rnd.nextInt(MapData.spawnPoints.length)];
+    }
+
     position = pos.clone();
     health = maxHealth;
     ammo = magazineSize;
@@ -84,15 +130,16 @@ class Player {
     double dt,
     double inputX,
     double inputZ,
-    List<ArenaBox> arenaBoxes,
-  ) {
+    List<ArenaBox> arenaBoxes, {
+    List<Enemy>? enemies,
+  }) {
     if (health <= 0) {
       if (!deathMessageShown) {
         death();
       } else {
         respawnTimer -= dt;
         if (respawnTimer <= 0) {
-          respawn();
+          respawn(enemies: enemies);
         }
       }
       return;
@@ -142,6 +189,21 @@ class Player {
       isGrounded = false;
     }
 
+    // Ceiling collision check: if on ground floor jumping under an upper slab (height 5.5 to 6.0)
+    if (position.y < 5.5 && position.y + 1.8 >= 5.5 && velocityY > 0) {
+      final x = position.x;
+      final z = position.z;
+      final underUpperPlatform =
+          (x >= -20 && x <= 20 && z >= 6 && z <= 20) ||
+          (x >= -20 && x <= 20 && z >= -20 && z <= -6) ||
+          (x >= 12 && x <= 20 && z >= -6 && z <= 6) ||
+          (x >= -20 && x <= -12 && z >= -6 && z <= 6);
+      if (underUpperPlatform) {
+        position.y = 5.5 - 1.8;
+        velocityY = 0.0;
+      }
+    }
+
     // Out of bounds check
     if (position.y < -20.0) {
       death();
@@ -156,7 +218,7 @@ class Player {
     // Upper platforms are not ramps. Only use them when the player is already
     // at that elevation; the stair strips below provide the only ground-level
     // route onto the first floor.
-    final canStandOnUpperFloor = currentY >= 5.5;
+    final canStandOnUpperFloor = currentY >= 5.4;
 
     // 1st Floor Slabs (height Y = 6.0)
     // North platform: X: [-20, 20], Z: [6, 20]

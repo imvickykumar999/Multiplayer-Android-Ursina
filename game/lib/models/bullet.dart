@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:vector_math/vector_math_64.dart';
 
 import 'enemy.dart';
+import 'map_data.dart';
 import 'player.dart';
 
 class Bullet {
@@ -38,9 +39,11 @@ class Bullet {
   bool update(
     double dt,
     List<Enemy> enemies,
-    Function(Enemy enemy, int damage) onHitEnemy, {
+    Function(Enemy enemy, int damage, bool isHeadshot) onHitEnemy, {
     Player? player,
     Function(Player player, int damage)? onHitPlayer,
+    List<ArenaBox>? arenaBoxes,
+    Function(Vector3 impactPoint)? onHitObstacle,
   }) {
     if (isDestroyed) return false;
 
@@ -50,8 +53,49 @@ class Bullet {
       return false;
     }
 
+    final prevPos = position.clone();
     position += velocity * dt;
 
+    // 1. Continuous Swept Collision against walls, pillars, barricades, and floors to prevent tunneling
+    if (arenaBoxes != null) {
+      final minTravelX = min(prevPos.x, position.x);
+      final maxTravelX = max(prevPos.x, position.x);
+      final minTravelY = min(prevPos.y, position.y);
+      final maxTravelY = max(prevPos.y, position.y);
+      final minTravelZ = min(prevPos.z, position.z);
+      final maxTravelZ = max(prevPos.z, position.z);
+
+      for (final box in arenaBoxes) {
+        // Allow bullets to travel over ground floor
+        if (box.textureType == 'floor' &&
+            box.center.y <= 0.5 &&
+            prevPos.y > 1.0 &&
+            position.y > 1.0) {
+          continue;
+        }
+
+        const margin = 0.2;
+        final boxMinX = box.minX - margin;
+        final boxMaxX = box.maxX + margin;
+        final boxMinY = box.minY - margin;
+        final boxMaxY = box.maxY + margin;
+        final boxMinZ = box.minZ - margin;
+        final boxMaxZ = box.maxZ + margin;
+
+        if (maxTravelX >= boxMinX &&
+            minTravelX <= boxMaxX &&
+            maxTravelY >= boxMinY &&
+            minTravelY <= boxMaxY &&
+            maxTravelZ >= boxMinZ &&
+            minTravelZ <= boxMaxZ) {
+          isDestroyed = true;
+          onHitObstacle?.call(prevPos);
+          return false;
+        }
+      }
+    }
+
+    // 2. Collision against local player (if bullet is from remote enemy)
     if (slave && player != null && onHitPlayer != null && player.health > 0) {
       final dx = (position.x - player.position.x).abs();
       final dz = (position.z - player.position.z).abs();
@@ -60,22 +104,26 @@ class Bullet {
       if (dx < 0.9 && dz < 0.9 && dy >= -0.2 && dy <= 2.2) {
         isDestroyed = true;
         onHitPlayer(player, damage);
+        onHitObstacle?.call(position.clone());
         return false;
       }
     }
 
-    // Check hit against remote enemies if this is our local bullet.
+    // 3. Collision against remote enemies (if bullet is from local player)
     if (!slave) {
       for (final enemy in enemies) {
         if (!enemy.isDead && enemy.health > 0) {
-          // Enemy collider is roughly 1.0 x 2.0 x 1.0 box centered at (x, y + 1.0, z)
           final dx = (position.x - enemy.position.x).abs();
           final dz = (position.z - enemy.position.z).abs();
           final dy = position.y - enemy.position.y;
 
           if (dx < 0.9 && dz < 0.9 && dy >= -0.2 && dy <= 2.2) {
             isDestroyed = true;
-            onHitEnemy(enemy, damage);
+            // Head section is near top of 1.8m body model
+            final isHeadshot = dy >= 1.35;
+            final dealtDamage = isHeadshot ? (damage * 1.5).round() : damage;
+            onHitEnemy(enemy, dealtDamage, isHeadshot);
+            onHitObstacle?.call(position.clone());
             return false;
           }
         }
